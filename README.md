@@ -11,18 +11,61 @@ This MCP server provides access to the following LegCo databases:
 - **Questions Database**: Access oral and written questions raised by Members at Council meetings
 - **Hansard Database**: Official records of proceedings, including questions, bills, motions, and voting results
 
+## Deployment Options
+
+### Option 1: Local MCP Server (Original)
+
+Install and run locally as a traditional MCP server:
+
+```bash
+pip install -e .
+legco-search-mcp
+```
+
+### Option 2: Cloudflare Workers (New!)
+
+Deploy to Cloudflare Workers for global access and scalability:
+
+```bash
+# Install Wrangler CLI
+npm install -g wrangler
+
+# Login to Cloudflare
+wrangler login
+
+# Deploy to Cloudflare
+wrangler deploy
+```
+
+See [CLOUDFLARE_DEPLOYMENT.md](CLOUDFLARE_DEPLOYMENT.md) for detailed instructions.
+
 ## Installation
+
+### For Local Development
 
 ```bash
 pip install -e .
 ```
 
+### For Cloudflare Workers
+
+```bash
+npm install
+```
+
 ## Usage
 
-### Running the Server
+### Local MCP Server
 
 ```bash
 legco-search-mcp
+```
+
+### Cloudflare Workers
+
+After deployment, your server will be available at:
+```
+https://your-worker-name.your-account.workers.dev/sse
 ```
 
 ### Available Tools
@@ -121,7 +164,7 @@ Search Hansard (official records of proceedings).
 
 ## Configuration
 
-### MCP Settings
+### Local MCP Settings
 
 Add this server to your MCP settings configuration:
 
@@ -136,15 +179,49 @@ Add this server to your MCP settings configuration:
 }
 ```
 
-### Claude Desktop Configuration
+### Remote MCP Settings (Cloudflare Workers)
 
-For Claude Desktop, add to your `claude_desktop_config.json`:
+For remote deployment, use the mcp-remote proxy:
 
 ```json
 {
   "mcpServers": {
     "legco-search": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://your-worker-name.your-account.workers.dev/sse"
+      ]
+    }
+  }
+}
+```
+
+### Claude Desktop Configuration
+
+For Claude Desktop, add to your `claude_desktop_config.json`:
+
+**Local Server:**
+```json
+{
+  "mcpServers": {
+    "legco-search": {
       "command": "legco-search-mcp"
+    }
+  }
+}
+```
+
+**Remote Server (Cloudflare Workers):**
+```json
+{
+  "mcpServers": {
+    "legco-search": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://your-worker-name.your-account.workers.dev/sse"
+      ]
     }
   }
 }

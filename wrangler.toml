@@ -1,0 +1,22 @@
+name = "legco-search-mcp"
+main = "src/worker.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["python_workers"]
+
+[env.production]
+name = "legco-search-mcp-prod"
+
+[env.staging]
+name = "legco-search-mcp-staging"
+
+# Configure for TypeScript/JavaScript runtime
+[build]
+command = ""
+
+# Add any environment variables you might need
+[vars]
+ENVIRONMENT = "production"
+
+# For future use if you need to add secrets
+# [secrets]
+# API_KEY = "your-api-key" 

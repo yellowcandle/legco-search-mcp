@@ -1,0 +1,26 @@
+{
+  "name": "legco-search-mcp-cloudflare",
+  "version": "0.1.0",
+  "description": "LegCo Search MCP Server for Cloudflare Workers",
+  "main": "src/worker.py",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "tail": "wrangler tail",
+    "test": "wrangler dev --test"
+  },
+  "keywords": [
+    "mcp",
+    "cloudflare",
+    "workers",
+    "legco",
+    "hong-kong"
+  ],
+  "author": "Developer",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.114.10"
+  }
+}
