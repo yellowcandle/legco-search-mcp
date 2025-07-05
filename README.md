@@ -21,6 +21,23 @@ A **remote Model Context Protocol (MCP) server** deployed on Cloudflare Workers 
 - **🔒 Security**: Input validation, sanitization, CORS support
 - **📊 Comprehensive Logging**: Request tracking with unique IDs
 - **🚫 No Authentication Required**: Authless API for easy integration
+- **🔍 Enhanced Search**: Multi-word search support with intelligent query parsing
+- **🔧 Robust Error Handling**: Connection issue fixes and comprehensive retry logic
+
+## ✨ Recent Improvements (v0.2.0)
+
+### **🔧 Search Endpoint Fixes**
+- **✅ Connection Issues Resolved**: Fixed "Connection closed" errors for complex searches
+- **✅ Multi-word Search Support**: Enhanced query parsing for phrases like "housing policy" and "transport infrastructure"
+- **✅ Hansard Endpoint Improvements**: Better handling of different hansard entity types (bills, questions, motions, voting)
+- **✅ Enhanced Error Logging**: Comprehensive request tracking and debugging capabilities
+- **✅ Query Timeout Optimization**: Increased timeout to 60 seconds for complex searches
+
+### **🎯 Search Performance Enhancements**
+- **Smart Query Parsing**: Multi-word terms automatically split into AND-filtered searches
+- **Field Validation**: Verified and corrected OData field mappings for all endpoints
+- **Robust Sanitization**: Enhanced input cleaning while preserving search functionality
+- **Better Error Messages**: Clear feedback for unsupported operations and malformed queries
 
 ## 🚀 Live Remote MCP Server
 
@@ -150,6 +167,11 @@ Search parliamentary questions raised by Members at Council meetings.
 }
 ```
 
+**🔍 Multi-word Search Examples:**
+- `"transport infrastructure"` → Finds questions containing both "transport" AND "infrastructure"
+- `"healthcare financing"` → Searches for both "healthcare" AND "financing" terms
+- `"climate change policy"` → Matches all three words in the subject
+
 **📊 Returns:** Question details, member information, meeting dates, and subject classifications.
 
 ### **📰 4. `search_hansard`**
@@ -178,7 +200,75 @@ Search official Hansard records of parliamentary proceedings and debates.
 }
 ```
 
+**📝 Hansard Type Options:**
+- `"hansard"` - Main proceedings (no subject search)
+- `"questions"` - Parliamentary questions with subject search
+- `"bills"` - Bill-related proceedings with subject search 
+- `"motions"` - Motion proceedings with subject search
+- `"voting"` - Voting result records with subject search
+
+**🔍 Advanced Search Examples:**
+- `"economic development"` → Bills containing both "economic" AND "development"
+- `"public health measures"` → Motions with all three terms present
+
 **📊 Returns:** Official proceedings, speaker information, debate content, and document links.
+
+## 🎯 Search Best Practices
+
+### **🔍 Effective Search Strategies**
+
+**Multi-word Searches:**
+- Use **specific phrases** for better results: `"housing development policy"` vs `"housing"`
+- **Word order doesn't matter**: `"policy housing"` = `"housing policy"`
+- **All words must be present**: Search uses AND logic, not OR
+
+**Date Range Optimization:**
+- **Use recent years** for active data: 2020-2025 for questions/hansard
+- **Bills database** has historical data since 1844
+- **Voting results** available from 2012 onwards
+
+**Pagination for Large Results:**
+```json
+{
+  "subject_keywords": "budget",
+  "top": 50,
+  "skip": 0    // First page
+}
+// Next page: "skip": 50
+```
+
+**Hansard Search Tips:**
+- **Main hansard** (`"hansard"`) - Use year/date filters only
+- **Specific types** (`"bills"`, `"questions"`) - Support subject keyword searches
+- **Speaker searches** - Available for questions and speeches endpoints
+
+### **⚡ Performance Tips**
+- **Combine filters** for faster results: year + keywords + top limit
+- **Start broad, then narrow**: Begin with year filter, add keywords progressively
+- **Use appropriate top limits**: 10-50 for initial exploration, up to 1000 for data export
+
+### **🛠️ Common Search Patterns**
+
+**Track Bill Progress:**
+```json
+// 1. Search bills by title
+{"name": "search_bills", "arguments": {"title_keywords": "Housing Development"}}
+
+// 2. Find related debates
+{"name": "search_hansard", "arguments": {"hansard_type": "bills", "subject_keywords": "Housing Development"}}
+
+// 3. Check voting results  
+{"name": "search_voting_results", "arguments": {"motion_keywords": "Housing Development"}}
+```
+
+**Research Policy Topics:**
+```json
+// 1. Find questions on topic
+{"name": "search_questions", "arguments": {"subject_keywords": "climate policy", "year": 2024}}
+
+// 2. Look for related motions
+{"name": "search_hansard", "arguments": {"hansard_type": "motions", "subject_keywords": "climate policy"}}
+```
 
 ## 🔌 MCP Client Integration Guide
 
@@ -384,18 +474,21 @@ The server accesses official LegCo OData APIs:
 ## 🛠️ Technical Details
 
 ### **🔒 Security Features**
-- **Input Sanitization**: All user inputs are sanitized and validated
-- **SQL Injection Prevention**: Parameterized queries and input validation
-- **Rate Limiting**: Per-IP request limiting with sliding window
-- **CORS Support**: Comprehensive cross-origin resource sharing
-- **Error Handling**: Graceful error responses with proper HTTP status codes
+- **Enhanced Input Sanitization**: Multi-word search terms properly sanitized while preserving functionality
+- **SQL Injection Prevention**: Parameterized OData queries with comprehensive validation
+- **Rate Limiting**: Per-IP request limiting with sliding window (60 req/min)
+- **CORS Support**: Comprehensive cross-origin resource sharing for all endpoints
+- **Robust Error Handling**: Graceful error responses with detailed logging and proper HTTP status codes
+- **Query Validation**: Field name verification and endpoint-specific parameter validation
 
 ### **⚡ Architecture**
 - **Serverless**: Cloudflare Workers for infinite scalability
-- **Edge Computing**: Global deployment for low latency
-- **Protocol Support**: HTTP, SSE, WebSocket transports
-- **JSON-RPC 2.0**: Full compliance with MCP specification
-- **OData Integration**: Native support for LegCo's OData APIs
+- **Edge Computing**: Global deployment for low latency worldwide
+- **Protocol Support**: HTTP, SSE, WebSocket transports with full MCP compliance
+- **JSON-RPC 2.0**: Complete implementation with proper error codes and message handling
+- **Enhanced OData Integration**: Native support with intelligent query building and multi-word search parsing
+- **Connection Resilience**: 60-second timeouts, retry logic, and comprehensive error recovery
+- **Smart Query Processing**: Automatic word splitting for AND-logic searches across all endpoints
 
 ## 📄 License
 
@@ -430,6 +523,16 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 - **Problem**: Browser security restrictions
 - **Solution**: Use the SSE endpoint instead of direct HTTP calls from browsers
 
+**❌ Error: "MCP error -32000: Connection closed"**
+- **Problem**: ✅ **FIXED** - Previously caused by multi-word search terms or complex queries
+- **Solution**: Update to latest version - now supports multi-word searches like "housing policy"
+- **Note**: If still experiencing issues, try simplifying the search terms
+
+**❌ Error: "Bad Request" on hansard searches**
+- **Problem**: Using subject_keywords with main hansard endpoint 
+- **Solution**: Use specific hansard types: `"hansard_type": "bills"` or `"questions"` for subject searches
+- **Alternative**: Use main hansard endpoint with only date/year filters
+
 **✅ Verify Server Status**
 ```bash
 # Check if server is healthy
@@ -439,6 +542,18 @@ curl https://legco-search-mcp.herballemon.workers.dev/health
 curl -X POST https://legco-search-mcp.herballemon.workers.dev/mcp-http \
   -H "Content-Type: application/json" \
   -d '{"method": "tools/list", "id": 1}'
+
+# Test multi-word search (recent fix)
+curl -X POST https://legco-search-mcp.herballemon.workers.dev/mcp-http \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "search_questions", 
+      "arguments": {"subject_keywords": "housing policy", "top": 5}
+    },
+    "id": 1
+  }'
 ```
 
 ### **Configuration Validation**

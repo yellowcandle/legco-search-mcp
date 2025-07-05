@@ -11,6 +11,8 @@ const BASE_URLS: Record<string, string> = {
   hansard_bills: 'https://app.legco.gov.hk/OpenData/HansardDB/Bills',
   hansard_motions: 'https://app.legco.gov.hk/OpenData/HansardDB/Motions',
   hansard_voting: 'https://app.legco.gov.hk/OpenData/HansardDB/VotingResults',
+  hansard_speeches: 'https://app.legco.gov.hk/OpenData/HansardDB/Speeches',
+  hansard_rundown: 'https://app.legco.gov.hk/OpenData/HansardDB/Rundown',
 };
 
 // --- Error Classes ---
@@ -113,11 +115,19 @@ function validateDateFormat(dateStr?: string): boolean {
 function sanitizeString(value?: string): string {
   if (!value) return '';
   try {
-    // Remove potentially dangerous characters and limit length
+    // Remove potentially dangerous characters but preserve spaces and common punctuation
+    // Allow: letters, numbers, spaces, hyphens, periods, commas, parentheses, apostrophes
     const sanitized = value
-      .replace(/[^\w\s\-.,()[\]']/g, '')
+      .replace(/[^\w\s\-.,()[\]'"&]/g, '') // Allow more safe characters including quotes and ampersand
       .replace(/'/g, "''")
+      .trim()
       .slice(0, 500);
+    
+    // Log the sanitization for debugging
+    if (value !== sanitized) {
+      logInfo('String sanitized', { original: value, sanitized });
+    }
+    
     return sanitized;
   } catch (error) {
     logError('String sanitization failed', { error: error as Error, value });
@@ -168,12 +178,34 @@ function buildODataQuery(endpoint: string, params: Record<string, any>): Record<
         if (params.start_date) filters.push(`start_date ge datetime'${params.start_date}'`);
         if (params.end_date) filters.push(`start_date le datetime'${params.end_date}'`);
         if (params.member_name) filters.push(`substringof('${sanitizeString(params.member_name)}', name_en)`);
-        if (params.motion_keywords) filters.push(`substringof('${sanitizeString(params.motion_keywords)}', motion_en)`);
+        if (params.motion_keywords) {
+          const keywords = sanitizeString(params.motion_keywords);
+          if (keywords) {
+            const words = keywords.split(/\s+/).filter(w => w.length > 0);
+            if (words.length === 1) {
+              filters.push(`substringof('${words[0]}', motion_en)`);
+            } else {
+              const wordFilters = words.map(word => `substringof('${word}', motion_en)`);
+              filters.push(`(${wordFilters.join(' and ')})`);
+            }
+          }
+        }
         if (params.term_no) filters.push(`term_no eq ${params.term_no}`);
         break;
         
       case 'bills':
-        if (params.title_keywords) filters.push(`substringof('${sanitizeString(params.title_keywords)}', bill_title_eng)`);
+        if (params.title_keywords) {
+          const keywords = sanitizeString(params.title_keywords);
+          if (keywords) {
+            const words = keywords.split(/\s+/).filter(w => w.length > 0);
+            if (words.length === 1) {
+              filters.push(`substringof('${words[0]}', bill_title_eng)`);
+            } else {
+              const wordFilters = words.map(word => `substringof('${word}', bill_title_eng)`);
+              filters.push(`(${wordFilters.join(' and ')})`);
+            }
+          }
+        }
         if (params.gazette_year) filters.push(`year(bill_gazette_date) eq ${params.gazette_year}`);
         if (params.gazette_start_date) filters.push(`bill_gazette_date ge datetime'${params.gazette_start_date}'`);
         if (params.gazette_end_date) filters.push(`bill_gazette_date le datetime'${params.gazette_end_date}'`);
@@ -181,7 +213,20 @@ function buildODataQuery(endpoint: string, params: Record<string, any>): Record<
         
       case 'questions_oral':
       case 'questions_written':
-        if (params.subject_keywords) filters.push(`substringof('${sanitizeString(params.subject_keywords)}', SubjectName)`);
+        if (params.subject_keywords) {
+          const keywords = sanitizeString(params.subject_keywords);
+          if (keywords) {
+            // For multi-word searches, split and create multiple substring filters
+            const words = keywords.split(/\s+/).filter(w => w.length > 0);
+            if (words.length === 1) {
+              filters.push(`substringof('${words[0]}', SubjectName)`);
+            } else {
+              // Multiple words - all must be present (AND logic)
+              const wordFilters = words.map(word => `substringof('${word}', SubjectName)`);
+              filters.push(`(${wordFilters.join(' and ')})`);
+            }
+          }
+        }
         if (params.member_name) filters.push(`substringof('${sanitizeString(params.member_name)}', MemberName)`);
         if (params.meeting_date) filters.push(`MeetingDate eq datetime'${params.meeting_date}'`);
         if (params.year) filters.push(`year(MeetingDate) eq ${params.year}`);
@@ -189,10 +234,41 @@ function buildODataQuery(endpoint: string, params: Record<string, any>): Record<
         
       default:
         if (endpoint.startsWith('hansard')) {
-          if (params.subject_keywords) filters.push(`substringof('${sanitizeString(params.subject_keywords)}', Subject)`);
-          if (params.speaker) filters.push(`Speaker eq '${sanitizeString(params.speaker)}'`);
+          // Handle different hansard endpoints with different field structures
+          if (params.subject_keywords) {
+            const keywords = sanitizeString(params.subject_keywords);
+            if (keywords) {
+              const words = keywords.split(/\s+/).filter(w => w.length > 0);
+              if (endpoint === 'hansard') {
+                // Main hansard endpoint doesn't have Subject field, skip subject_keywords
+                logWarning('Subject keywords not supported for main hansard endpoint', { endpoint, keywords });
+              } else {
+                // Other hansard endpoints have Subject field
+                if (words.length === 1) {
+                  filters.push(`substringof('${words[0]}', Subject)`);
+                } else {
+                  const wordFilters = words.map(word => `substringof('${word}', Subject)`);
+                  filters.push(`(${wordFilters.join(' and ')})`);
+                }
+              }
+            }
+          }
+          
+          // Speaker field handling varies by endpoint
+          if (params.speaker) {
+            const speakerName = sanitizeString(params.speaker);
+            if (endpoint === 'hansard_questions' || endpoint === 'hansard_speeches') {
+              filters.push(`substringof('${speakerName}', Speaker)`);
+            } else if (endpoint === 'hansard_rundown') {
+              // Rundown uses SpeakerID, need to handle differently
+              logWarning('Speaker search by name not directly supported for rundown endpoint', { endpoint, speaker: speakerName });
+            }
+          }
+          
           if (params.meeting_date) filters.push(`MeetingDate eq datetime'${params.meeting_date}'`);
           if (params.year) filters.push(`year(MeetingDate) eq ${params.year}`);
+          
+          // Question type only applies to hansard_questions
           if (params.question_type && endpoint === 'hansard_questions') {
             filters.push(`QuestionType eq '${sanitizeString(params.question_type)}'`);
             filters.push(`HansardType eq 'English'`);
@@ -217,7 +293,7 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries: num
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
       
       const response = await fetch(url, {
         ...options,
@@ -278,6 +354,8 @@ async function fetchOData(endpoint: string, params: Record<string, any>, request
     
     logInfo('Making API request', { ...context, url: fullUrl, headers });
     
+    logInfo('Final request URL', { ...context, fullUrl });
+    
     const response = await fetchWithRetry(fullUrl, { 
       method: 'GET', 
       headers 
@@ -285,6 +363,13 @@ async function fetchOData(endpoint: string, params: Record<string, any>, request
     
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error');
+      logError('API request failed with non-OK status', {
+        ...context,
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText.slice(0, 500), // Limit error text length
+        url: fullUrl
+      });
       throw new LegCoAPIError(
         `API request failed: ${response.status} ${response.statusText}`,
         response.status,
