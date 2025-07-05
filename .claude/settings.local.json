@@ -6,7 +6,13 @@
       "Bash(python test:*)",
       "Bash(uv add:*)",
       "Bash(uv run:*)",
-      "Bash(timeout 5 uv run legco-search-mcp --help)"
+      "Bash(timeout 5 uv run legco-search-mcp --help)",
+      "Bash(curl:*)",
+      "Bash(npx wrangler dev:*)",
+      "Bash(git checkout:*)",
+      "Bash(rg:*)",
+      "Bash(npm run deploy:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
