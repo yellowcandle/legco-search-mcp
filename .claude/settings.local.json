@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__fetch__imageFetch",
+      "Bash(ls:*)",
+      "Bash(python test:*)",
+      "Bash(uv add:*)",
+      "Bash(uv run:*)",
+      "Bash(timeout 5 uv run legco-search-mcp --help)"
+    ],
+    "deny": []
+  }
+}
