@@ -629,6 +629,22 @@ export default {
 
       // MCP SSE endpoint
       if (url.pathname.endsWith('/sse')) {
+        if (method === 'GET') {
+          return new Response(
+            JSON.stringify({
+              message: 'This endpoint expects POST requests for MCP tool calls. No authentication is required.',
+              usage: 'POST /sse with { "method": "tools/call", ... }',
+              auth: 'none'
+            }),
+            {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          );
+        }
         if (method !== 'POST') {
           throw new ValidationError('Only POST requests are supported for MCP endpoint');
         }
@@ -782,6 +798,25 @@ export default {
         } else {
           throw new ValidationError(`Unknown method: ${req.method}`);
         }
+      }
+
+      // OAuth/OpenID Connect endpoints
+      if (
+        url.pathname.startsWith('/.well-known/oauth-authorization-server') ||
+        url.pathname.startsWith('/.well-known/openid-configuration')
+      ) {
+        return new Response(
+          JSON.stringify({
+            error: "OAuth/OpenID Connect is not supported. This is an authless API."
+          }),
+          {
+            status: 404,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            },
+          }
+        );
       }
 
       // Default response for unknown endpoints
