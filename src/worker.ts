@@ -540,6 +540,17 @@ async function searchHansard(params: Record<string, any>, requestId?: string): P
   }
 }
 
+// --- CORS Headers Helper ---
+function getCORSHeaders(): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cache-Control, Accept, Accept-Encoding, Accept-Language, User-Agent, Referer, Origin, X-Requested-With',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Credentials': 'false',
+    'Vary': 'Origin',
+  };
+}
+
 // --- Enhanced Error Response Function ---
 function createErrorResponse(error: Error, requestId?: string): Response {
   let statusCode = 500;
@@ -571,7 +582,7 @@ function createErrorResponse(error: Error, requestId?: string): Response {
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
+    ...getCORSHeaders(),
   };
   
   if (error instanceof RateLimitError && error.retryAfter) {
@@ -581,6 +592,193 @@ function createErrorResponse(error: Error, requestId?: string): Response {
   return new Response(JSON.stringify(errorResponse), {
     status: statusCode,
     headers
+  });
+}
+
+// --- WebSocket Handler ---
+function handleWebSocket(request: Request, requestId: string): Response {
+  const upgradeHeader = request.headers.get('Upgrade');
+  if (!upgradeHeader || upgradeHeader !== 'websocket') {
+    return new Response('Expected websocket upgrade', { status: 400 });
+  }
+
+  const webSocketPair = new WebSocketPair();
+  const [client, server] = Object.values(webSocketPair);
+
+  server.accept();
+  
+  server.addEventListener('message', async (event) => {
+    try {
+      const data = JSON.parse(event.data as string);
+      logInfo('WebSocket message received', { data, requestId });
+      
+      let response: any;
+      
+      if (data.method === 'initialize') {
+        response = {
+          jsonrpc: '2.0',
+          id: data.id,
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: {
+              tools: {
+                listChanged: false
+              }
+            },
+            serverInfo: {
+              name: 'LegCo Search MCP Server',
+              version: '0.1.0'
+            }
+          }
+        };
+      } else if (data.method === 'tools/list') {
+        response = {
+          jsonrpc: '2.0',
+          id: data.id,
+          result: {
+            tools: [
+              {
+                name: 'search_voting_results',
+                description: 'Search voting results from LegCo meetings',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    meeting_type: { type: 'string' },
+                    start_date: { type: 'string' },
+                    end_date: { type: 'string' },
+                    member_name: { type: 'string' },
+                    motion_keywords: { type: 'string' },
+                    term_no: { type: 'integer' },
+                    top: { type: 'integer', default: 100 },
+                    skip: { type: 'integer', default: 0 },
+                    format: { type: 'string', default: 'json' },
+                  },
+                },
+              },
+              {
+                name: 'search_bills',
+                description: 'Search bills from LegCo database',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    title_keywords: { type: 'string' },
+                    gazette_year: { type: 'integer' },
+                    gazette_start_date: { type: 'string' },
+                    gazette_end_date: { type: 'string' },
+                    top: { type: 'integer', default: 100 },
+                    skip: { type: 'integer', default: 0 },
+                    format: { type: 'string', default: 'json' },
+                  },
+                },
+              },
+              {
+                name: 'search_questions',
+                description: 'Search questions at Council meetings',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    question_type: { type: 'string', default: 'oral' },
+                    subject_keywords: { type: 'string' },
+                    member_name: { type: 'string' },
+                    meeting_date: { type: 'string' },
+                    year: { type: 'integer' },
+                    top: { type: 'integer', default: 100 },
+                    skip: { type: 'integer', default: 0 },
+                    format: { type: 'string', default: 'json' },
+                  },
+                },
+              },
+              {
+                name: 'search_hansard',
+                description: 'Search Hansard (official records of proceedings)',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    hansard_type: { type: 'string', default: 'hansard' },
+                    subject_keywords: { type: 'string' },
+                    speaker: { type: 'string' },
+                    meeting_date: { type: 'string' },
+                    year: { type: 'integer' },
+                    question_type: { type: 'string' },
+                    top: { type: 'integer', default: 100 },
+                    skip: { type: 'integer', default: 0 },
+                    format: { type: 'string', default: 'json' },
+                  },
+                },
+              },
+            ]
+          }
+        };
+      } else if (data.method === 'tools/call') {
+        const toolName = data.params?.name;
+        const arguments_ = data.params?.arguments || {};
+        
+        if (!toolName) {
+          throw new ValidationError('Missing tool name in request');
+        }
+        
+        let result: any;
+        switch (toolName) {
+          case 'search_voting_results':
+            result = await searchVotingResults(arguments_, requestId);
+            break;
+          case 'search_bills':
+            result = await searchBills(arguments_, requestId);
+            break;
+          case 'search_questions':
+            result = await searchQuestions(arguments_, requestId);
+            break;
+          case 'search_hansard':
+            result = await searchHansard(arguments_, requestId);
+            break;
+          default:
+            throw new ValidationError(`Unknown tool: ${toolName}`);
+        }
+        
+        response = {
+          jsonrpc: '2.0',
+          id: data.id,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(result, null, 2),
+              },
+            ],
+          }
+        };
+      } else {
+        response = {
+          jsonrpc: '2.0',
+          id: data.id,
+          error: {
+            code: -32601,
+            message: `Method not found: ${data.method}`
+          }
+        };
+      }
+      
+      server.send(JSON.stringify(response));
+      
+    } catch (error) {
+      logError('WebSocket error', { error: error as Error, requestId });
+      
+      const errorResponse = {
+        jsonrpc: '2.0',
+        id: (event.data as any)?.id || null,
+        error: {
+          code: -32603,
+          message: (error as Error).message
+        }
+      };
+      
+      server.send(JSON.stringify(errorResponse));
+    }
+  });
+
+  return new Response(null, {
+    status: 101,
+    webSocket: client,
   });
 }
 
@@ -601,11 +799,37 @@ export default {
           status: 200,
           headers: {
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, PUT, PATCH, DELETE',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, Upgrade, Connection, Cache-Control, Accept, Accept-Encoding, Accept-Language, User-Agent, Referer, Origin, X-Requested-With',
+            'Access-Control-Allow-Credentials': 'false',
             'Access-Control-Max-Age': '86400',
+            'Vary': 'Origin',
           },
         });
+      }
+
+      // WebSocket endpoint for MCP
+      if (url.pathname.endsWith('/mcp')) {
+        const upgradeHeader = request.headers.get('Upgrade');
+        if (upgradeHeader && upgradeHeader.toLowerCase() === 'websocket') {
+          return handleWebSocket(request, requestId);
+        }
+        
+        // Return info for non-WebSocket requests
+        return new Response(
+          JSON.stringify({
+            message: 'This endpoint supports WebSocket connections for MCP protocol',
+            usage: 'Connect via WebSocket with MCP JSON-RPC messages',
+            protocol: 'MCP 2024-11-05',
+            auth: 'none'
+          }),
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            },
+          }
+        );
       }
 
       // Health check endpoint
@@ -627,17 +851,18 @@ export default {
         );
       }
 
-      // MCP SSE endpoint
-      if (url.pathname.endsWith('/sse')) {
+      // MCP HTTP endpoint (pure JSON-RPC over HTTP)
+      if (url.pathname.endsWith('/mcp-http')) {
         if (method === 'GET') {
           return new Response(
             JSON.stringify({
-              message: 'This endpoint expects POST requests for MCP tool calls. No authentication is required.',
-              usage: 'POST /sse with { "method": "tools/call", ... }',
+              message: 'This endpoint supports HTTP-based MCP communication',
+              usage: 'POST with JSON-RPC 2.0 messages',
+              protocol: 'MCP 2024-11-05',
+              transport: 'HTTP',
               auth: 'none'
             }),
             {
-              status: 200,
               headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
@@ -645,8 +870,9 @@ export default {
             }
           );
         }
+        
         if (method !== 'POST') {
-          throw new ValidationError('Only POST requests are supported for MCP endpoint');
+          throw new ValidationError('Only POST requests are supported for HTTP MCP endpoint');
         }
         
         // Rate limiting
@@ -664,82 +890,110 @@ export default {
           throw new ValidationError('Invalid JSON in request body');
         }
         
-        if (req.method === 'tools/list') {
+        // Handle JSON-RPC methods for HTTP transport
+        if (req.method === 'initialize') {
           return new Response(
             JSON.stringify({
-              tools: [
-                {
-                  name: 'search_voting_results',
-                  description: 'Search voting results from LegCo meetings',
-                  inputSchema: {
-                    type: 'object',
-                    properties: {
-                      meeting_type: { type: 'string' },
-                      start_date: { type: 'string' },
-                      end_date: { type: 'string' },
-                      member_name: { type: 'string' },
-                      motion_keywords: { type: 'string' },
-                      term_no: { type: 'integer' },
-                      top: { type: 'integer', default: 100 },
-                      skip: { type: 'integer', default: 0 },
-                      format: { type: 'string', default: 'json' },
+              jsonrpc: '2.0',
+              id: req.id,
+              result: {
+                protocolVersion: '2024-11-05',
+                capabilities: {
+                  tools: {
+                    listChanged: false
+                  }
+                },
+                serverInfo: {
+                  name: 'LegCo Search MCP Server',
+                  version: '0.1.0'
+                }
+              }
+            }),
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          );
+        } else if (req.method === 'tools/list') {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id,
+              result: {
+                tools: [
+                  {
+                    name: 'search_voting_results',
+                    description: 'Search voting results from LegCo meetings',
+                    inputSchema: {
+                      type: 'object',
+                      properties: {
+                        meeting_type: { type: 'string' },
+                        start_date: { type: 'string' },
+                        end_date: { type: 'string' },
+                        member_name: { type: 'string' },
+                        motion_keywords: { type: 'string' },
+                        term_no: { type: 'integer' },
+                        top: { type: 'integer', default: 100 },
+                        skip: { type: 'integer', default: 0 },
+                        format: { type: 'string', default: 'json' },
+                      },
                     },
                   },
-                },
-                {
-                  name: 'search_bills',
-                  description: 'Search bills from LegCo database',
-                  inputSchema: {
-                    type: 'object',
-                    properties: {
-                      title_keywords: { type: 'string' },
-                      gazette_year: { type: 'integer' },
-                      gazette_start_date: { type: 'string' },
-                      gazette_end_date: { type: 'string' },
-                      top: { type: 'integer', default: 100 },
-                      skip: { type: 'integer', default: 0 },
-                      format: { type: 'string', default: 'json' },
+                  {
+                    name: 'search_bills',
+                    description: 'Search bills from LegCo database',
+                    inputSchema: {
+                      type: 'object',
+                      properties: {
+                        title_keywords: { type: 'string' },
+                        gazette_year: { type: 'integer' },
+                        gazette_start_date: { type: 'string' },
+                        gazette_end_date: { type: 'string' },
+                        top: { type: 'integer', default: 100 },
+                        skip: { type: 'integer', default: 0 },
+                        format: { type: 'string', default: 'json' },
+                      },
                     },
                   },
-                },
-                {
-                  name: 'search_questions',
-                  description: 'Search questions at Council meetings',
-                  inputSchema: {
-                    type: 'object',
-                    properties: {
-                      question_type: { type: 'string', default: 'oral' },
-                      subject_keywords: { type: 'string' },
-                      member_name: { type: 'string' },
-                      meeting_date: { type: 'string' },
-                      year: { type: 'integer' },
-                      top: { type: 'integer', default: 100 },
-                      skip: { type: 'integer', default: 0 },
-                      format: { type: 'string', default: 'json' },
+                  {
+                    name: 'search_questions',
+                    description: 'Search questions at Council meetings',
+                    inputSchema: {
+                      type: 'object',
+                      properties: {
+                        question_type: { type: 'string', default: 'oral' },
+                        subject_keywords: { type: 'string' },
+                        member_name: { type: 'string' },
+                        meeting_date: { type: 'string' },
+                        year: { type: 'integer' },
+                        top: { type: 'integer', default: 100 },
+                        skip: { type: 'integer', default: 0 },
+                        format: { type: 'string', default: 'json' },
+                      },
                     },
                   },
-                },
-                {
-                  name: 'search_hansard',
-                  description: 'Search Hansard (official records of proceedings)',
-                  inputSchema: {
-                    type: 'object',
-                    properties: {
-                      hansard_type: { type: 'string', default: 'hansard' },
-                      subject_keywords: { type: 'string' },
-                      speaker: { type: 'string' },
-                      meeting_date: { type: 'string' },
-                      year: { type: 'integer' },
-                      question_type: { type: 'string' },
-                      top: { type: 'integer', default: 100 },
-                      skip: { type: 'integer', default: 0 },
-                      format: { type: 'string', default: 'json' },
+                  {
+                    name: 'search_hansard',
+                    description: 'Search Hansard (official records of proceedings)',
+                    inputSchema: {
+                      type: 'object',
+                      properties: {
+                        hansard_type: { type: 'string', default: 'hansard' },
+                        subject_keywords: { type: 'string' },
+                        speaker: { type: 'string' },
+                        meeting_date: { type: 'string' },
+                        year: { type: 'integer' },
+                        question_type: { type: 'string' },
+                        top: { type: 'integer', default: 100 },
+                        skip: { type: 'integer', default: 0 },
+                        format: { type: 'string', default: 'json' },
+                      },
                     },
                   },
-                },
-              ],
-              requestId,
-              timestamp: new Date().toISOString()
+                ],
+              }
             }),
             {
               headers: {
@@ -779,14 +1033,16 @@ export default {
           
           return new Response(
             JSON.stringify({
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify(result, null, 2),
-                },
-              ],
-              requestId,
-              timestamp: new Date().toISOString()
+              jsonrpc: '2.0',
+              id: req.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify(result, null, 2),
+                  },
+                ],
+              }
             }),
             {
               headers: {
@@ -796,7 +1052,286 @@ export default {
             }
           );
         } else {
-          throw new ValidationError(`Unknown method: ${req.method}`);
+          return new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id || null,
+              error: {
+                code: -32601,
+                message: `Method not found: ${req.method}`
+              }
+            }),
+            {
+              status: 404,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          );
+        }
+      }
+
+      // MCP SSE endpoint (Server-Sent Events)
+      if (url.pathname.endsWith('/sse')) {
+        if (method === 'GET') {
+          // Create SSE stream
+          const { readable, writable } = new TransformStream();
+          const writer = writable.getWriter();
+          const encoder = new TextEncoder();
+          
+          // Send SSE headers
+          const headers = {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization, Cache-Control, Accept, Accept-Encoding, Accept-Language, User-Agent, Referer, Origin, X-Requested-With',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Credentials': 'false',
+            'Vary': 'Origin',
+          };
+          
+          // Start with connection established message
+          const writeSSE = (data: any, event?: string) => {
+            let message = '';
+            if (event) message += `event: ${event}\n`;
+            message += `data: ${JSON.stringify(data)}\n\n`;
+            writer.write(encoder.encode(message));
+          };
+          
+          // Send initial connection established event
+          writeSSE({
+            jsonrpc: '2.0',
+            method: 'notifications/initialized',
+            params: {
+              protocolVersion: '2024-11-05',
+              capabilities: {
+                tools: {
+                  listChanged: false
+                }
+              },
+              serverInfo: {
+                name: 'LegCo Search MCP Server',
+                version: '0.1.0'
+              }
+            }
+          }, 'message');
+          
+          // Keep connection alive
+          const keepAliveInterval = setInterval(() => {
+            writer.write(encoder.encode(': heartbeat\n\n'));
+          }, 30000);
+          
+          // Handle client disconnect
+          const response = new Response(readable, { headers });
+          
+          // Cleanup on close (this won't work in Workers, but it's good practice)
+          setTimeout(() => {
+            clearInterval(keepAliveInterval);
+            writer.close().catch(() => {});
+          }, 300000); // 5 minutes timeout
+          
+          return response;
+        }
+        
+        if (method !== 'POST') {
+          throw new ValidationError('Only GET (SSE) and POST (JSON-RPC) requests are supported');
+        }
+        
+        // Rate limiting
+        if (!checkRateLimit(ip)) {
+          throw new RateLimitError(
+            `Rate limit exceeded: ${RATE_LIMIT} requests per ${RATE_LIMIT_WINDOW} seconds.`,
+            RATE_LIMIT_WINDOW
+          );
+        }
+        
+        let req: any;
+        try {
+          req = await request.json();
+        } catch (error) {
+          throw new ValidationError('Invalid JSON in request body');
+        }
+        
+        if (req.method === 'initialize') {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id,
+              result: {
+                protocolVersion: '2024-11-05',
+                capabilities: {
+                  tools: {
+                    listChanged: false
+                  }
+                },
+                serverInfo: {
+                  name: 'LegCo Search MCP Server',
+                  version: '0.1.0'
+                }
+              }
+            }),
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          );
+        } else if (req.method === 'tools/list') {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id,
+              result: {
+                tools: [
+                  {
+                    name: 'search_voting_results',
+                    description: 'Search voting results from LegCo meetings',
+                    inputSchema: {
+                      type: 'object',
+                      properties: {
+                        meeting_type: { type: 'string' },
+                        start_date: { type: 'string' },
+                        end_date: { type: 'string' },
+                        member_name: { type: 'string' },
+                        motion_keywords: { type: 'string' },
+                        term_no: { type: 'integer' },
+                        top: { type: 'integer', default: 100 },
+                        skip: { type: 'integer', default: 0 },
+                        format: { type: 'string', default: 'json' },
+                      },
+                    },
+                  },
+                  {
+                    name: 'search_bills',
+                    description: 'Search bills from LegCo database',
+                    inputSchema: {
+                      type: 'object',
+                      properties: {
+                        title_keywords: { type: 'string' },
+                        gazette_year: { type: 'integer' },
+                        gazette_start_date: { type: 'string' },
+                        gazette_end_date: { type: 'string' },
+                        top: { type: 'integer', default: 100 },
+                        skip: { type: 'integer', default: 0 },
+                        format: { type: 'string', default: 'json' },
+                      },
+                    },
+                  },
+                  {
+                    name: 'search_questions',
+                    description: 'Search questions at Council meetings',
+                    inputSchema: {
+                      type: 'object',
+                      properties: {
+                        question_type: { type: 'string', default: 'oral' },
+                        subject_keywords: { type: 'string' },
+                        member_name: { type: 'string' },
+                        meeting_date: { type: 'string' },
+                        year: { type: 'integer' },
+                        top: { type: 'integer', default: 100 },
+                        skip: { type: 'integer', default: 0 },
+                        format: { type: 'string', default: 'json' },
+                      },
+                    },
+                  },
+                  {
+                    name: 'search_hansard',
+                    description: 'Search Hansard (official records of proceedings)',
+                    inputSchema: {
+                      type: 'object',
+                      properties: {
+                        hansard_type: { type: 'string', default: 'hansard' },
+                        subject_keywords: { type: 'string' },
+                        speaker: { type: 'string' },
+                        meeting_date: { type: 'string' },
+                        year: { type: 'integer' },
+                        question_type: { type: 'string' },
+                        top: { type: 'integer', default: 100 },
+                        skip: { type: 'integer', default: 0 },
+                        format: { type: 'string', default: 'json' },
+                      },
+                    },
+                  },
+                ],
+              }
+            }),
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          );
+        } else if (req.method === 'tools/call') {
+          const params = req.params || {};
+          const toolName = params.name;
+          const arguments_ = params.arguments || {};
+          
+          if (!toolName) {
+            throw new ValidationError('Missing tool name in request');
+          }
+          
+          let result: any;
+          switch (toolName) {
+            case 'search_voting_results':
+              result = await searchVotingResults(arguments_, requestId);
+              break;
+            case 'search_bills':
+              result = await searchBills(arguments_, requestId);
+              break;
+            case 'search_questions':
+              result = await searchQuestions(arguments_, requestId);
+              break;
+            case 'search_hansard':
+              result = await searchHansard(arguments_, requestId);
+              break;
+            default:
+              throw new ValidationError(`Unknown tool: ${toolName}`);
+          }
+          
+          logInfo('Tool call completed successfully', { toolName, requestId });
+          
+          return new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id,
+              result: {
+                content: [
+                  {
+                    type: 'text',
+                    text: JSON.stringify(result, null, 2),
+                  },
+                ],
+              }
+            }),
+            {
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          );
+        } else {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: req.id || null,
+              error: {
+                code: -32601,
+                message: `Method not found: ${req.method}`
+              }
+            }),
+            {
+              status: 404,
+              headers: {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              },
+            }
+          );
         }
       }
 
@@ -824,10 +1359,15 @@ export default {
         JSON.stringify({
           service: 'LegCo Search MCP Server',
           version: '0.1.0',
+          description: 'Hong Kong Legislative Council Search MCP Server',
           endpoints: {
             health: '/health',
-            mcp: '/sse',
+            mcp_http: '/mcp-http',
+            mcp_sse: '/sse',
+            mcp_websocket: '/mcp',
           },
+          protocols: ['HTTP', 'WebSocket'],
+          auth: 'none',
           requestId,
           timestamp: new Date().toISOString()
         }),
