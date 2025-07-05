@@ -2,7 +2,7 @@
   "name": "legco-search-mcp-cloudflare",
   "version": "0.1.0",
   "description": "LegCo Search MCP Server for Cloudflare Workers",
-  "main": "src/worker.py",
+  "main": "src/worker.ts",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -21,6 +21,6 @@
   "author": "Developer",
   "license": "MIT",
   "devDependencies": {
-    "wrangler": "^3.114.10"
+    "wrangler": "^4.23.0"
   }
 }
