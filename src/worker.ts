@@ -709,7 +709,7 @@ async function handleSSE(request: Request, requestId: string): Promise<Response>
             jsonrpc: '2.0',
             id,
             result: {
-              protocolVersion: '2025-06-18',
+              protocolVersion: '2024-11-05',
               capabilities: {
                 tools: { listChanged: true },
                 logging: {}
@@ -837,7 +837,7 @@ async function handleSSE(request: Request, requestId: string): Promise<Response>
                 status: "alive",
                 server: "LegCo Search MCP Server",
                 version: "0.2.0",
-                protocol: "2025-06-18",
+                protocol: "2024-11-05",
                 timestamp: new Date().toISOString()
               };
               break;
@@ -891,7 +891,7 @@ async function handleSSE(request: Request, requestId: string): Promise<Response>
           serverInfo: {
             name: 'legco-search-mcp',
             version: '0.2.0',
-            protocol: '2025-06-18'
+            protocol: '2024-11-05'
           },
           endpoints: {
             http: '/mcp-http',
@@ -962,7 +962,7 @@ async function handleHTTPMCP(request: Request, requestId: string): Promise<Respo
           jsonrpc: '2.0',
           id,
           result: {
-            protocolVersion: '2025-06-18',
+            protocolVersion: '2024-11-05',
             capabilities: {
               tools: { listChanged: true },
               logging: {}
@@ -1143,7 +1143,7 @@ function handleWebSocket(request: Request, requestId: string): Response {
           jsonrpc: '2.0',
           id: data.id,
           result: {
-            protocolVersion: '2025-06-18',
+            protocolVersion: '2024-11-05',
             capabilities: {
               tools: {
                 listChanged: true
@@ -1325,7 +1325,7 @@ export class LegCoMcpServer extends McpAgent<Env, ServerState> {
   initialState: ServerState = {
     requestCount: 0,
     lastRequestTime: new Date().toISOString(),
-    version: "2025-06-18"
+    version: "2024-11-05"
   };
 
   // Implement the abstract server property
@@ -1528,7 +1528,7 @@ export class LegCoMcpServer extends McpAgent<Env, ServerState> {
               status: "alive",
               server: "LegCo Search MCP Server",
               version: this.state.version,
-              protocol: "2025-06-18",
+              protocol: "2024-11-05",
               requestCount: this.state.requestCount,
               lastRequestTime: this.state.lastRequestTime,
               timestamp: now
@@ -1587,7 +1587,7 @@ export default {
           status: 'healthy',
           service: 'LegCo Search MCP Server',
           version: '0.2.0',
-          protocolVersion: '2025-06-18',
+          protocolVersion: '2024-11-05',
           capabilities: {
             tools: {
               listChanged: true
@@ -1644,7 +1644,7 @@ export default {
           sse: '/sse (Server-Sent Events)',
           'mcp-http': '/mcp-http (HTTP compatibility)'
         },
-        protocol: '2025-06-18',
+        protocol: '2024-11-05',
         auth: 'none',
         agent: 'Cloudflare Agents SDK'
       }),
