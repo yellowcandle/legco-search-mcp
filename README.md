@@ -27,9 +27,9 @@ A **remote Model Context Protocol (MCP) server** deployed on Cloudflare Workers 
 ## ✨ Recent Improvements (v0.2.0)
 
 ### **🔄 Major Architecture Update**
-- **✅ MCP Protocol Upgrade**: Migrated from 2024-11-05 to 2025-06-18 specification
-- **✅ Cloudflare Agents SDK**: Adopted McpAgent class for enhanced state management and performance
-- **✅ New MCP Features**: Resource subscriptions, annotations, progress notifications, ping support
+- **✅ MCP Protocol Compatibility**: Using stable 2024-11-05 specification for wide client support
+- **✅ Cloudflare Agents SDK**: Adopted McpAgent class for enhanced state management and performance  
+- **✅ Enhanced SSE Transport**: Proper Server-Sent Events implementation for reliable MCP connections
 - **✅ Improved Tool Schemas**: Enhanced input validation with Zod schemas and better error messages
 
 ### **🔧 Search Endpoint Fixes**
@@ -49,9 +49,9 @@ A **remote Model Context Protocol (MCP) server** deployed on Cloudflare Workers 
 
 The server is **already deployed and ready to use**:
 
-### **Production Endpoints**
+### **Primary Production Endpoints**
+- **📡 SSE (Recommended)**: `https://legco-search-mcp.herballemon.workers.dev/sse`
 - **🔗 HTTP**: `https://legco-search-mcp.herballemon.workers.dev/mcp-http`
-- **📡 SSE**: `https://legco-search-mcp.herballemon.workers.dev/sse`
 - **⚡ WebSocket**: `wss://legco-search-mcp.herballemon.workers.dev/mcp`
 - **💚 Health Check**: `https://legco-search-mcp.herballemon.workers.dev/health`
 
@@ -62,7 +62,13 @@ The server is **already deployed and ready to use**:
 2. Click **"Add Integration"**
 3. Enter URL: `https://legco-search-mcp.herballemon.workers.dev/sse`
 4. Select **SSE** transport
-5. Start using the 4 LegCo search tools immediately!
+5. Start using the 5 LegCo search tools immediately!
+
+**For Raycast Users:**
+1. Install MCP extension in Raycast
+2. Add server URL: `https://legco-search-mcp.herballemon.workers.dev/sse`
+3. Protocol: **2024-11-05** (fully compatible)
+4. Transport: **SSE**
 
 **For Developers:**
 ```bash
@@ -91,7 +97,19 @@ npm run deploy
 
 ## 🔧 MCP Tools & Functions
 
-The server provides **4 powerful tools** for accessing Hong Kong Legislative Council data:
+The server provides **5 powerful tools** for accessing Hong Kong Legislative Council data:
+
+### **🏓 0. `ping`** 
+Check server status and connectivity.
+
+**📋 Parameters:** None
+
+**🎯 Example Usage:**
+```json
+{}
+```
+
+**📊 Returns:** Server status, version, protocol information, and timestamp.
 
 ### **🗳️ 1. `search_voting_results`**
 Search voting results from LegCo meetings with detailed vote breakdowns.
@@ -529,6 +547,11 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 - **Problem**: Browser security restrictions
 - **Solution**: Use the SSE endpoint instead of direct HTTP calls from browsers
 
+**❌ Error: "Unsupported protocol version: unknown(protocolVersion: '2025-06-18')"**
+- **Problem**: ✅ **FIXED** - Client doesn't support newer MCP protocol version
+- **Solution**: Server now uses stable MCP protocol version **2024-11-05** for wide compatibility
+- **Works with**: Raycast, Claude Desktop, and most MCP clients
+
 **❌ Error: "MCP error -32000: Connection closed"**
 - **Problem**: ✅ **FIXED** - Previously caused by multi-word search terms or complex queries
 - **Solution**: Update to latest version - now supports multi-word searches like "housing policy"
@@ -568,7 +591,14 @@ curl -X POST https://legco-search-mcp.herballemon.workers.dev/mcp-http \
 - ✅ Use Settings → Integrations (not JSON config)
 - ✅ URL: `https://legco-search-mcp.herballemon.workers.dev/sse`
 - ✅ Transport: SSE
+- ✅ Protocol: 2024-11-05 (auto-detected)
 - ❌ Don't add remote servers to `claude_desktop_config.json`
+
+**For Raycast:**
+- ✅ Use MCP extension settings
+- ✅ URL: `https://legco-search-mcp.herballemon.workers.dev/sse`
+- ✅ Transport: SSE
+- ✅ Protocol: 2024-11-05 (fully supported)
 
 **For Developers:**
 - ✅ HTTP endpoint: `/mcp-http`
