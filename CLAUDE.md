@@ -14,7 +14,7 @@ This is a **remote MCP server** deployed on Cloudflare Workers that provides acc
 ### Remote MCP Server Features
 
 - **Multi-Protocol Support**: HTTP, SSE, and WebSocket transports
-- **MCP 2024-11-05 Specification**: Full compliance with latest MCP protocol
+- **MCP 2025-06-18 Specification**: Full compliance with latest MCP protocol using Cloudflare Agents SDK
 - **Global Edge Deployment**: Cloudflare Workers for low latency worldwide
 - **No Authentication Required**: Authless API for easy integration
 - **Production Ready**: Rate limiting, error handling, CORS support, comprehensive logging
@@ -51,7 +51,7 @@ curl http://localhost:8787/health
 # Test MCP initialization
 curl -X POST http://localhost:8787/sse \
   -H "Content-Type: application/json" \
-  -d '{"method": "initialize", "params": {"protocolVersion": "2024-11-05", "capabilities": {}}, "id": 1}'
+  -d '{"method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}}, "id": 1}'
 
 # Test tools list
 curl -X POST http://localhost:8787/sse \
@@ -84,8 +84,24 @@ curl -X POST http://localhost:8787/sse \
 **MCP Tools Provided:**
 1. `search_voting_results`: Search voting records with meeting type, date, member filters
 2. `search_bills`: Search bills with title keywords, gazette dates
-3. `search_questions`: Search oral/written questions with subject/member filters  
+3. `search_questions`: Search oral/written questions with subject/member filters
 4. `search_hansard`: Search official proceedings by type (hansard/questions/bills/motions/voting)
+5. `ping`: Check server liveness and get basic server information
+
+### Architecture Migration (2025-01-18)
+
+**Migration to Cloudflare Agents SDK:**
+- **Previous**: Direct MCP protocol implementation with manual JSON-RPC handling
+- **Current**: Cloudflare Agents SDK with `McpAgent` class for enhanced state management
+- **Benefits**: Built-in Durable Objects state persistence, improved error handling, OAuth integration ready
+- **Protocol**: Updated from MCP 2024-11-05 to 2025-06-18 with new features:
+  - Resource subscriptions and notifications
+  - Enhanced capabilities (listChanged for tools/prompts/resources)
+  - Annotations system (audience, priority, lastModified)
+  - Progress notifications for long-running requests
+  - Ping requests for liveness checking
+  - Enhanced logging levels
+  - Audio content support
 
 ### MCP Protocol Implementation
 

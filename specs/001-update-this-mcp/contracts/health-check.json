@@ -1,0 +1,99 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Health Check Contract",
+    "version": "1.0.0",
+    "description": "Contract for server health and performance monitoring"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Get server health status",
+        "description": "Returns server health status with performance metrics. Must respond within 100ms.",
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": ["healthy", "degraded", "unhealthy"],
+                      "example": "healthy"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO timestamp of health check"
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "Current MCP protocol version",
+                      "example": "2025-06-18"
+                    },
+                    "uptime": {
+                      "type": "number",
+                      "description": "Server uptime in seconds",
+                      "minimum": 0
+                    },
+                    "responseTime": {
+                      "type": "number",
+                      "description": "Health check response time in milliseconds",
+                      "maximum": 100
+                    }
+                  },
+                  "required": ["status", "timestamp", "version"]
+                }
+              }
+            },
+            "headers": {
+              "X-Response-Time": {
+                "description": "Actual response time in milliseconds",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^\\d+$"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Server is unhealthy or updating",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "unhealthy"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Server updating to new version"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["status", "timestamp"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthStatus": {
+        "type": "string",
+        "enum": ["healthy", "degraded", "unhealthy"],
+        "description": "Overall health status of the server"
+      }
+    }
+  }
+}

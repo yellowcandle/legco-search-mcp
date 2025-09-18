@@ -1,16 +1,28 @@
 name = "legco-search-mcp"
 main = "src/worker.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
+
+# Enable Node.js compatibility for agents package
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = ""
+
+# Durable Objects for McpAgent state management
+[[durable_objects.bindings]]
+name = "LEGCO_MCP"
+class_name = "LegCoMcpServer"
+
+# Migration for SQLite storage (required for Agent state)
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LegCoMcpServer"]
 
 [env.production]
 name = "legco-search-mcp-prod"
 
 [env.staging]
 name = "legco-search-mcp-staging"
-
-# Configure for TypeScript/JavaScript runtime
-[build]
-command = ""
 
 # Add any environment variables you might need
 [vars]

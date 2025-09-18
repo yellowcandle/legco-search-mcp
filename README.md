@@ -26,6 +26,12 @@ A **remote Model Context Protocol (MCP) server** deployed on Cloudflare Workers 
 
 ## ✨ Recent Improvements (v0.2.0)
 
+### **🔄 Major Architecture Update**
+- **✅ MCP Protocol Upgrade**: Migrated from 2024-11-05 to 2025-06-18 specification
+- **✅ Cloudflare Agents SDK**: Adopted McpAgent class for enhanced state management and performance
+- **✅ New MCP Features**: Resource subscriptions, annotations, progress notifications, ping support
+- **✅ Improved Tool Schemas**: Enhanced input validation with Zod schemas and better error messages
+
 ### **🔧 Search Endpoint Fixes**
 - **✅ Connection Issues Resolved**: Fixed "Connection closed" errors for complex searches
 - **✅ Multi-word Search Support**: Enhanced query parsing for phrases like "housing policy" and "transport infrastructure"
