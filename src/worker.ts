@@ -695,34 +695,256 @@ function createErrorResponse(error: Error, requestId?: string): Response {
 // --- SSE Handler ---
 async function handleSSE(request: Request, requestId: string): Promise<Response> {
   try {
-    // For SSE, we need to handle JSON-RPC over HTTP
-    // This is a simplified implementation
+    // SSE transport for MCP should handle POST requests with streaming responses
     if (request.method === 'POST') {
-      return handleHTTPMCP(request, requestId);
-    }
+      // Parse the JSON-RPC request
+      const body = await request.json().catch(() => ({})) as any;
+      const { method, params, id } = body;
 
-    // For GET requests, establish SSE connection
-    const response = new Response(
-      `data: ${JSON.stringify({
-        jsonrpc: '2.0',
-        id: null,
-        method: 'connection/established',
-        params: { requestId }
-      })}\n\n`,
-      {
+      let responseData: any;
+
+      switch (method) {
+        case 'initialize':
+          responseData = {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              protocolVersion: '2025-06-18',
+              capabilities: {
+                tools: { listChanged: true },
+                logging: {}
+              },
+              serverInfo: {
+                name: 'legco-search-mcp',
+                version: '0.2.0'
+              }
+            }
+          };
+          break;
+
+        case 'tools/list':
+          responseData = {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              tools: [
+                {
+                  name: 'search_voting_results',
+                  description: 'Search voting results from LegCo meetings',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      meeting_type: { type: 'string' },
+                      start_date: { type: 'string' },
+                      end_date: { type: 'string' },
+                      member_name: { type: 'string' },
+                      motion_keywords: { type: 'string' },
+                      term_no: { type: 'integer' },
+                      top: { type: 'integer', default: 100 },
+                      skip: { type: 'integer', default: 0 },
+                      format: { type: 'string', default: 'json' }
+                    }
+                  }
+                },
+                {
+                  name: 'search_bills',
+                  description: 'Search bills from LegCo database',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      title_keywords: { type: 'string' },
+                      gazette_year: { type: 'integer' },
+                      gazette_start_date: { type: 'string' },
+                      gazette_end_date: { type: 'string' },
+                      top: { type: 'integer', default: 100 },
+                      skip: { type: 'integer', default: 0 },
+                      format: { type: 'string', default: 'json' }
+                    }
+                  }
+                },
+                {
+                  name: 'search_questions',
+                  description: 'Search questions at Council meetings',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      question_type: { type: 'string', default: 'oral' },
+                      subject_keywords: { type: 'string' },
+                      member_name: { type: 'string' },
+                      meeting_date: { type: 'string' },
+                      year: { type: 'integer' },
+                      top: { type: 'integer', default: 100 },
+                      skip: { type: 'integer', default: 0 },
+                      format: { type: 'string', default: 'json' }
+                    }
+                  }
+                },
+                {
+                  name: 'search_hansard',
+                  description: 'Search Hansard (official records of proceedings)',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {
+                      hansard_type: { type: 'string', default: 'hansard' },
+                      subject_keywords: { type: 'string' },
+                      speaker: { type: 'string' },
+                      meeting_date: { type: 'string' },
+                      year: { type: 'integer' },
+                      question_type: { type: 'string' },
+                      top: { type: 'integer', default: 100 },
+                      skip: { type: 'integer', default: 0 },
+                      format: { type: 'string', default: 'json' }
+                    }
+                  }
+                },
+                {
+                  name: 'ping',
+                  description: 'Check server liveness and get basic server information',
+                  inputSchema: {
+                    type: 'object',
+                    properties: {}
+                  }
+                }
+              ]
+            }
+          };
+          break;
+
+        case 'tools/call':
+          const toolName = params?.name;
+          const arguments_ = params?.arguments || {};
+
+          if (!toolName) {
+            throw new ValidationError('Missing tool name in request');
+          }
+
+          let result: any;
+          switch (toolName) {
+            case 'search_voting_results':
+              result = await searchVotingResults(arguments_, requestId);
+              break;
+            case 'search_bills':
+              result = await searchBills(arguments_, requestId);
+              break;
+            case 'search_questions':
+              result = await searchQuestions(arguments_, requestId);
+              break;
+            case 'search_hansard':
+              result = await searchHansard(arguments_, requestId);
+              break;
+            case 'ping':
+              result = {
+                status: "alive",
+                server: "LegCo Search MCP Server",
+                version: "0.2.0",
+                protocol: "2025-06-18",
+                timestamp: new Date().toISOString()
+              };
+              break;
+            default:
+              throw new ValidationError(`Unknown tool: ${toolName}`);
+          }
+
+          responseData = {
+            jsonrpc: '2.0',
+            id,
+            result: {
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify(result, null, 2)
+                }
+              ]
+            }
+          };
+          break;
+
+        default:
+          responseData = {
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32601,
+              message: `Method not found: ${method}`
+            }
+          };
+      }
+
+      // Format as proper SSE response
+      const sseData = `data: ${JSON.stringify(responseData)}\n\n`;
+      
+      return new Response(sseData, {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+          ...getCORSHeaders()
         }
-      }
-    );
-    return response;
+      });
+
+    } else if (request.method === 'GET') {
+      // For GET requests, return connection information
+      const connectionInfo = `data: ${JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'connection/ready',
+        params: {
+          serverInfo: {
+            name: 'legco-search-mcp',
+            version: '0.2.0',
+            protocol: '2025-06-18'
+          },
+          endpoints: {
+            http: '/mcp-http',
+            sse: '/sse',
+            websocket: '/mcp'
+          },
+          requestId
+        }
+      })}\n\n`;
+
+      return new Response(connectionInfo, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          ...getCORSHeaders()
+        }
+      });
+
+    } else {
+      // Handle OPTIONS for CORS preflight
+      return new Response(null, {
+        status: 204,
+        headers: getCORSHeaders()
+      });
+    }
+
   } catch (error) {
     logError('SSE handler failed', { error: error as Error, requestId });
-    return createErrorResponse(error as Error, requestId);
+    
+    // Return SSE-formatted error response
+    const errorData = `data: ${JSON.stringify({
+      jsonrpc: '2.0',
+      id: null,
+      error: {
+        code: -32603,
+        message: (error as Error).message,
+        data: {
+          requestId,
+          timestamp: new Date().toISOString()
+        }
+      }
+    })}\n\n`;
+
+    return new Response(errorData, {
+      status: 200, // SSE should always return 200, errors are in the data
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        ...getCORSHeaders()
+      }
+    });
   }
 }
 
